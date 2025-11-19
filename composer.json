@@ -1,0 +1,56 @@
+{
+    "name": "spaghettijeff/chunky",
+    "description": "resumable chunked file uploader",
+    "type": "package",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Jeffrey Butler",
+            "email": "jeffreybutler22@gmail.com"
+        }
+    ],
+    "autoload": {
+        "psr-4": {
+            "spaghettijeff\\chunky\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "spaghettijeff\\chunky\\Tests\\": "tests/",
+            "App\\": "workbench/app/",
+            "Database\\Factories\\": "workbench/database/factories/",
+            "Database\\Seeders\\": "workbench/database/seeders/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "spaghettijeff\\chunky\\ChunkyServiceProvider"
+            ]
+        }
+    },
+    "require-dev": {
+        "orchestra/testbench": "^10.0",
+        "orchestra/testbench-dusk": "^10.0"
+    },
+    "config": {},
+    "scripts": {
+        "post-autoload-dump": [
+            "@clear",
+            "@prepare"
+        ],
+        "clear": "@php vendor/bin/testbench package:purge-skeleton --ansi",
+        "prepare": "@php vendor/bin/testbench package:discover --ansi",
+        "build": "@php vendor/bin/testbench workbench:build --ansi",
+        "serve": [
+            "Composer\\Config::disableProcessTimeout",
+            "@build",
+            "@php vendor/bin/testbench serve --ansi"
+        ],
+        "test": [
+            "@clear",
+            "@php vendor/bin/phpunit"
+        ]
+    },
+    "minimum-stability": "dev"
+}
