@@ -2,7 +2,6 @@
 namespace spaghettijeff\chunky;
 
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Filesystem\Filesystem;
 
@@ -11,9 +10,29 @@ use spaghettijeff\chunky\UploadManager;
 
 class Upload
 {
+    /**
+     * The storage disk chunks are saved in
+     *
+     * @var \Illuminate\Contracts\Filesystem\Filesystem
+     */
     private $storage;
+    /**
+     * uuid for the upload
+     *
+     * @var string
+     */
     private $id;
+    /**
+     * file name reported by the client
+     *
+     * @var string
+     */
     protected $client_name;
+    /**
+     * file size (in bytes) reported by the client
+     *
+     * @var int
+     */
     protected int $size;
 
 
@@ -34,7 +53,11 @@ class Upload
         return $this->id;
     }
 
-
+    /**
+     * determine if all the chunks of a file have been uploaded
+     *
+     * @return bool
+     */
     public function isFinished(): bool
     {
         $total_bytes_uploaded = 0;
@@ -48,10 +71,24 @@ class Upload
         return $total_bytes_uploaded === $this->size;
     }
 
+    /**
+     * get the file name of the upload as reported by the client
+     *
+     * @return string
+     */
     public function getClientOriginalName(): string
     {
         return $this->client_name;
     }
+
+    /**
+     * save the contents of a chunk to the filesystem, returning a
+     * string that is the path on success, and false on failure
+     *
+     * @param spaghettijeff/chunky/UploadChunk $chunk
+     *
+     * @return string|false
+     */
 
     public function storeChunk(UploadChunk $chunk): string|false
     {
@@ -64,6 +101,17 @@ class Upload
         return $path;
     }
 
+    /**
+     * merge the chunks of an upload to one file at $directory in the filesystem $driver
+     * if no directory is given the root of the filesystem is used
+     * if no driver is given the filesystem that stores chunks is used
+     * returns the path of the stored upload
+     *
+     * @param string|null $directory
+     * @param \Illuminate\Contracts\Filesystem\Filesystem|null $driver
+     *
+     * @return string
+     */
     public function mergeAndStore(string|null $directory=null, Filesystem|null $driver=null): string
     {
         $driver = $driver ? $driver : $this->storage;
@@ -89,6 +137,12 @@ class Upload
         $this->storage->deleteDirectory($chunk_dir);
         return $directory.'/'.$filename;
     }
+
+    /**
+     * returns a response for the client to use to start/finish/resume an upload
+     *
+     * @return \Illuminate\Http\JsonResponse
+     */
     public function uploadResponse()
     {
         if ($this->id === null) {

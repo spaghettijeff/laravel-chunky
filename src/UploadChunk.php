@@ -5,7 +5,17 @@ use Illuminate\Http\Request;
 
 class UploadChunk
 {
+    /**
+     * contents of the file chunk
+     *
+     * @var resource
+     */
     private mixed $file;
+    /**
+     * file chunk number (1 indexed)
+     *
+     * @var int
+     */
     private int $chunk_number;
 
     public function __construct(Request $request)
