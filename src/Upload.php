@@ -15,13 +15,13 @@ class Upload
      *
      * @var \Illuminate\Contracts\Filesystem\Filesystem
      */
-    private $storage;
+    protected $storage;
     /**
      * uuid for the upload
      *
      * @var string
      */
-    private $id;
+    protected $id;
     /**
      * file name reported by the client
      *
