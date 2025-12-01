@@ -15,13 +15,13 @@ class Upload
      *
      * @var \Illuminate\Contracts\Filesystem\Filesystem
      */
-    private $storage;
+    protected $storage;
     /**
      * uuid for the upload
      *
      * @var string
      */
-    private $id;
+    protected $id;
     /**
      * file name reported by the client
      *
@@ -39,13 +39,9 @@ class Upload
     public function __construct(Request $request, UploadManager $manager)
     {
         $this->storage = $manager->storage();
-        $upload_id = $request->header('upload-id');
-        if ($upload_id === null) {
-            $upload_id = Str::uuid()->toString();
-        }
-        $this->id = $upload_id;
         $this->size = $request->header('file-size');
         $this->client_name = $request->header('file-name');
+        $this->id = $request->header('upload-id');
     }
 
     public function getID(): string
@@ -62,6 +58,7 @@ class Upload
     {
         $total_bytes_uploaded = 0;
         $uploaded_chunks = $this->storage->files('chunks/'.$this->id);
+        $uploaded_chunks = array_filter($uploaded_chunks, fn($x) => str_starts_with($x, 'chunks/'.$this->id.'/part'));
         foreach($uploaded_chunks as $chunk) {
             $total_bytes_uploaded += $this->storage->size($chunk);
         }
@@ -92,8 +89,9 @@ class Upload
 
     public function storeChunk(UploadChunk $chunk): string|false
     {
-        $this->storage->makeDirectory('chunks/' . $this->id);
-        $path = $this->storage->path('chunks/' . $this->id . '/part' . $chunk->getChunkNumber());
+        $chunk_directory = $this->get_chunk_directory();
+        $this->storage->makeDirectory($chunk_directory);
+        $path = $this->storage->path($chunk_directory.'/part'.$chunk->getChunkNumber());
         $stream = fopen($path, 'wb');
         if (!$stream) return false;
         if (!stream_copy_to_stream($chunk->file(), $stream)) return false;
@@ -118,8 +116,8 @@ class Upload
         $directory = $directory ? $directory : '';
         $filename = $this->id;
         throw_if(!$this->isFinished(), new \Error('Upload not complete'));
-        $chunk_dir = 'chunks/'.$this->id.'/';
-        $chunks = $this->storage->files($chunk_dir, false);
+        $chunk_dir = $this->get_chunk_directory();
+        $chunks = $this->get_uploaded_chunks();
         usort($chunks, function($a, $b) use ($chunk_dir) {
             $a = intval(substr($a, strlen($chunk_dir.'part')));
             $b = intval(substr($b, strlen($chunk_dir.'part')));
@@ -146,6 +144,7 @@ class Upload
     public function uploadResponse()
     {
         if ($this->id === null) {
+        $this->init_new_upload();
         return response()->json([
             'upload_id' => $this->id,
             'max_chunksize' => config('chunky.max_chunk_size'),
@@ -153,16 +152,30 @@ class Upload
         ], Response::HTTP_ACCEPTED);
         }
         // attempt resume
-        $directory = 'chunks/'.$this->id.'/';
-        $uploaded_chunks = array_map(function ($path) use ($directory) {
-                return intval(substr($path, strlen($directory.'part')));
-            },
-            $this->storage->files($directory));
+        $directory = $this->get_chunk_directory();
+        $uploaded_chunks = array_map(
+            fn($path) => intval(substr($path, strlen($directory.'part'))),
+            $this->get_uploaded_chunks());
 
         return response()->json([
             'upload_id' => $this->id,
             'max_chunksize' => config('chunky.max_chunk_size'),
             'uploaded_chunks' => $uploaded_chunks,
         ], Response::HTTP_ACCEPTED);
+    }
+
+    protected function init_new_upload() {
+        $this->id = Str::uuid()->toString();
+    }
+
+    private final function get_chunk_directory() {
+        return 'chunks/'.$this->id.'/';
+    }
+
+    private final function get_uploaded_chunks() {
+        $directory = $this->get_chunk_directory();
+        return array_filter(
+            $this->storage->files($directory, false),
+            fn($x) => str_starts_with($x, $directory.'part'));
     }
 }

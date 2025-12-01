@@ -1,10 +1,11 @@
-
 class ChunkyUploader {
-    constructor(target, {csrf_token, retry_attempts}, progress_callback = null) {
+    constructor(target, {csrf_token, retry_attempts}, progress_callback = null, session_resume_callback = null) {
         this.target = target;
         this.csrf_token = csrf_token;
         this.progress_callback = (progress_callback === null) ? () => {} : progress_callback;
+        this.session_resume_callback = (session_resume_callback === null) ? () => { return true } : session_resume_callback;
         this.retry_attempts = retry_attempts;
+        this.file = undefined;
         this.context = {
             upload_id: undefined,
             max_chunksize: undefined,
@@ -15,10 +16,29 @@ class ChunkyUploader {
         };
     }
 
+    async upload_resume() {
+        await this.resume(this.file);
+        await this.upload_chunks(this.file);
+        const response = await this.finalize();
+        this.progress_callback(response);
+        return response;
+    }
+
     async upload(file) {
-        await this.initialize(file);
+        this.file = file;
+        await this.initialize(this.file);
+        await this.upload_chunks(this.file);
+        const response = await this.finalize();
+        this.progress_callback(response);
+        return response;
+    }
+
+    async upload_chunks(file) {
         chunk_loop:
         for (const chunk of this.split_file(this.context.max_chunksize, file)) {
+            if (!this.context.required_chunks.has(chunk.chunk_number)) {
+                continue chunk_loop;
+            }
             for (let retry_count = 0; retry_count < this.retry_attempts; retry_count++) {
                 let response = await this.upload_chunk(chunk);
                 if (response.ok) {
@@ -36,15 +56,12 @@ class ChunkyUploader {
                     response: response,
                 });
             }
-            // all retries failed
             throw new Error(`Upload failed, chunk number ${chunk.chunk_number} failed all retry attempts(${this.num_retry})`);
         }
-        const response = await this.finalize();
-        this.progress_callback(response);
-        return response;
     }
 
-    async initialize(file) {
+    async resume(file) {
+        if (this.file === undefined) throw new Error('Attempting to resume an upload that has not been initialized');
         const response = await fetch(this.target, {
             method: 'POST',
             headers: {
@@ -52,6 +69,7 @@ class ChunkyUploader {
                 'file-name': file.name,
                 'file-size': file.size,
                 'file-type': file.type,
+                'upload-id': this.context.upload_id,
             },
         });
         if (response.status != 202) {
@@ -74,7 +92,46 @@ class ChunkyUploader {
             file_name: file.name,
             file_size: file.size,
             file_type: file.type,
+        };
+    }
 
+    async initialize(file) {
+        const hash = await this.calculate_hash(file);
+        const response = await fetch(this.target, {
+            method: 'POST',
+            headers: {
+                'X-CSRF-TOKEN': this.csrf_token,
+                'file-name': file.name,
+                'file-size': file.size,
+                'file-type': file.type,
+                'file-hash': hash,
+            },
+        });
+        if (response.status != 202) {
+            throw new Error(`Failed to initialize upload: ${response.status}`);
+        }
+        const result = await response.json();
+        const num_chunks = Math.ceil(file.size/result.max_chunksize);
+        var all_chunk_ids = new Set(function* () {
+                for (let i = 1; i <= num_chunks; i++) {
+                    yield i;
+                }
+            }());
+        if ((result.uploaded_chunks.length !== 0) && this.session_resume_callback()) {
+            console.log(result.uploaded_chunks);
+            var uploaded_chunks = new Set(result.uploaded_chunks);
+        } else {
+            var uploaded_chunks = new Set([]);
+        }
+        let required_chunks = all_chunk_ids.difference(uploaded_chunks);
+        this.progress_callback(result);
+        this.context = {
+            upload_id: result.upload_id,
+            max_chunksize: result.max_chunksize,
+            required_chunks: required_chunks,
+            file_name: file.name,
+            file_size: file.size,
+            file_type: file.type,
         };
     }
 
@@ -122,5 +179,11 @@ class ChunkyUploader {
             body: file_chunk.file,
         });
         return response;
+    }
+
+    async calculate_hash(file) {
+        const file_buffer = await file.arrayBuffer();
+        const hash = await crypto.subtle.digest("SHA-512", file_buffer);
+        return Array.prototype.map.call(new Uint8Array(hash), x=>(('00'+x.toString(16)).slice(-2))).join('');
     }
 }

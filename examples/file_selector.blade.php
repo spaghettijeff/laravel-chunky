@@ -4,7 +4,9 @@
 var uploader = new ChunkyUploader(
     '{{ Request::url() }}',
     {csrf_token: '{{ csrf_token() }}', retry_attempts: 4},
-    (e) => console.log(e) );
+    (e) => console.log(e)
+    () => confirm("That file has been partially uploaded. Resume?");
+);
 
 function upload(event) {
     event.preventDefault();
