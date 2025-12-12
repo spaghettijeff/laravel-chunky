@@ -8,8 +8,23 @@ use spaghettijeff\chunky\Upload;
 use spaghettijeff\chunky\UploadManager;
 
 class SessionResumableUpload extends Upload {
+    /**
+     * sha512 hash of the file reported by the client
+     *
+     * @var string|null
+     */
     protected string|null $expected_hash;
+    /**
+     * upload id saved in the session
+     *
+     * @var string|null
+     */
     protected string|null $session_id;
+    /**
+     * session of the current request
+     *
+     * @var \Illuminate\Contracts\Session\Session
+     */
     private $session;
 
     public function __construct(Request $request, UploadManager $manager)
@@ -20,11 +35,15 @@ class SessionResumableUpload extends Upload {
         parent::__construct($request, $manager);
     }
 
+     /*
+     * returns a response for the client to use to start/finish/resume an upload
+     *
+     * @return \Illuminate\Http\JsonResponse
+     */
     public function uploadResponse()
     {
         if ($this->session_id !== null && $this->id === null) { // attempt session recovery
             $hash = $this->get_stored_hash($this->session_id);
-            #dd($hash);
             if ($hash && $this->expected_hash === $hash['hash'] && $this->client_name == $hash['filename']) { // stored hash is same as reported
                 $this->id = $this->session_id;
             }
