@@ -18,6 +18,11 @@ class ChunkyServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        if ($this->app->runningInConsole()) {
+            $this->commands([
+                CleanupCommand::class,
+            ]);
+        }
         $this->publishes([
             __DIR__.'/../config/chunky.php' => config_path('chunky.php'),
             __DIR__.'/../resources/js/chunkyClient.js' => public_path('spaghettijeff/chunky/chunkyClient.js'),
